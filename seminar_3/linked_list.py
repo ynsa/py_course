@@ -43,6 +43,7 @@ class Node:
 
 
 def flatten_linked_list(linked_list):
+    # TODO: look on map
     new_list = []
     for node in linked_list:
         if isinstance(node.value, Node):

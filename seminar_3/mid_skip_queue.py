@@ -1,5 +1,6 @@
 from collections import deque
 from pprint import pprint, pformat
+from queue import PriorityQueue
 
 from utils import timeit
 
@@ -27,10 +28,6 @@ class MidSkipQueue(object):
 
         if iterable:
             self.__add__(iterable)
-            # self._head = list(iterable[:k])
-            # if len(iterable) > k:
-            #     self._tail = deque(iterable[max(k, len(iterable) - k):],
-            #                        maxlen=k)
 
     @property
     def k(self):
@@ -104,27 +101,44 @@ class MidSkipQueue(object):
 
 
 class MidSkipPriorityQueue(MidSkipQueue):
-    pass
+    def __init__(self, k, iterable=None):
+        assert isinstance(k, int), (
+            'The `k` argument must be an instance of '
+            '`int`, not `{}.{}`.'.format(
+                k.__class__.__module__, k.__class__.__name__)
+        )
+        assert k > 0, 'The `k` argument must be positive.'
+
+        assert isinstance(iterable, type(None)) or \
+            hasattr(iterable, '__iter__'), (
+                'The `iterable` argument must implement `__iter__` method,'
+                ' `{}.{}` doesn\'t do it.'.format(
+                    iterable.__class__.__module__, iterable.__class__.__name__)
+            )
+
+        self._k = k
+        self._head = PriorityQueue(maxsize=k)
+        self._tail = PriorityQueue(maxsize=k)
+
+        self._list = None
+
+        if iterable:
+            self.__add__(iterable)
 
 
 if __name__ == '__main__':
     q = MidSkipQueue(2, (1, 2, 3, 4, 5))
-    # print(q)
-    # # for x in q:
-    # #     print(x, '--')
     q = MidSkipQueue(1)
-    # q.append(-1, 9, 'sdsdf')  # q: [ -1]
     q.append(-1)
-    # print(q)
-    q += (-2, -3)  # q: [ -1, -3] - the first and the last remain
+    q += (-2, -3)
     assert q.list == [-1, -3]
-    # print(q)
-    q.append(4)  # q: [ -1, 4] - the last item has been replaced
+    q.append(4)
     assert q.list == [-1, 4]
-    # print(q)
-    q.append(5)  # q: [ -1, 5] - the last item has been replaced
+    q.append(5)
     assert q.list == [-1, 5]
-    # print(q)
+    assert q[1] == 5
+    assert q.index(5) == 1
+    assert q.index(55) == -1
 
     q = MidSkipQueue(2, "Hello!")
     assert q.list == ['H', 'e', 'o', '!']
