@@ -43,7 +43,6 @@ class Node:
 
 
 def flatten_linked_list(linked_list):
-    # TODO: look on map
     new_list = []
     for node in linked_list:
         if isinstance(node.value, Node):
@@ -63,7 +62,7 @@ if __name__ == '__main__':
     # for r in r3:
     #     print(r)
     r3_flattenned = flatten_linked_list(r3)  # 3 -> 19 -> 25 -> 12 -> None
-    print('\n')
+    # print('\n')
     # for r in r3_flattenned:
     #     print(r)
     r3_expected_flattenned_collection = [3, 19, 25, 12]
