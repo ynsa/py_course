@@ -1,5 +1,5 @@
+import reprlib
 from collections import deque
-from pprint import pformat
 
 
 class MidSkipQueue(object):
@@ -93,8 +93,9 @@ class MidSkipQueue(object):
         return self.list.__contains__(*args, **kwargs)
 
     def __str__(self):
-        # TODO: change
-        return pformat(self.list, indent=2, width=2)
+        repr = reprlib.Repr()
+        repr.maxlist = 10
+        return repr.repr(self.list)
 
 
 class MidSkipPriorityQueue(MidSkipQueue):
@@ -116,8 +117,6 @@ class MidSkipPriorityQueue(MidSkipQueue):
         self._k = k
         self._head = []
         self._tail = []
-        # self._head = PriorityQueue(maxsize=k)
-        # self._tail = PriorityQueue(maxsize=k)
 
         self._list = None
 
@@ -162,16 +161,6 @@ class MidSkipPriorityQueue(MidSkipQueue):
                 self._head[i] = value
             else:
                 self._add_tail(p_object)
-                # j = self._find_min(self._tail)
-                # if len(self._tail) < self.k:
-                #     if p_object > self._tail[0]:
-                #         value = self._tail[0]
-                #         self._tail[0] = p_object
-                # if p_object > self._tail[j]:
-                #     if p_object > self._tail[0]:
-                #         value = self._tail[0]
-                #         self._tail[0] = p_object
-                #     self._tail[j] = value
         if len(args):
             self.__add__(args)
         self._list = None
@@ -198,13 +187,6 @@ if __name__ == '__main__':
     assert q.list == []
     q += (6, 5, 3, 1, 2, 4, 8, 7)
     assert q.list == [1, 2, 8, 7]
-    # q = PriorityQueue(maxsize=3)
-    # q.put(5)
-    # q.put(1)
-    # q.put(2)
-    # q.put(6)
-    # pprint(q.queue)
-    # q = MidSkipQueue(2, (1, 2, 3, 4, 5))
     q = MidSkipQueue(1)
     q2 = q.copy()
     q.append(-1)
@@ -222,8 +204,5 @@ if __name__ == '__main__':
 
     q = MidSkipQueue(2, "Hello!")
     assert q.list == ['H', 'e', 'o', '!']
-    # print(q)
-    # q += [x for x in range(1001, 9000)]
-    # print(q)
-    # q.append(1501, 1502, "1503", "1504")
+    q = MidSkipQueue(10000, range(1, 20000))
     # print(q)
