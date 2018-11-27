@@ -1,10 +1,8 @@
+import importlib
 import sys
 import unittest
-import importlib
-import collections
-
-from unittest import mock
 from io import StringIO
+from unittest import mock
 
 # uncomment the line below and change the path specified
 # sys.path.insert(0, r'path_to_solution_folder')
@@ -51,6 +49,7 @@ class InterfaceTestCase(unittest.TestCase):
 
     def test_mid_skip_queue(self):
         MidSkipQueue = self._load_function(0, 'mid_skip_queue', 'MidSkipQueue')
+
         self.assertEqual([1, 2, 3, 6, 7, 8],
                          MidSkipQueue(3, (1, 2, 3, 4, 5, 6, 7, 8)).list)
 
@@ -75,6 +74,21 @@ class InterfaceTestCase(unittest.TestCase):
 
     def test_mid_skip_priority_queue(self):
         MidSkipPriorityQueue = self._load_function(0, 'mid_skip_queue', 'MidSkipPriorityQueue')
+
+        q = MidSkipPriorityQueue(1)
+        q.append(-1)
+        self.assertEqual([-1], q.list)
+        q += (-2, -3)
+        self.assertEqual([-3, -1], q.list)
+        q.append(4)
+        self.assertEqual([-3, 4], q.list)
+        q.append(-5)
+        self.assertEqual([-5, 4], q.list)
+
+        q = MidSkipPriorityQueue(2)
+        self.assertEqual([], q.list)
+        q += (6, 5, 3, 1, 2, 4, 8, 7)
+        self.assertEqual([1, 2, 8, 7], q.list)
 
         self._check_stdout_empty('mid_skip_queue')
 
