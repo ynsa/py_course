@@ -2,10 +2,6 @@ import operator
 from itertools import starmap
 
 
-def transpose(iter):
-    pass
-
-
 # 3
 def scalar_product(iter_1, iter_2):
     try:
