@@ -1,7 +1,5 @@
 import time
-from collections import deque
 from random import randint
-from threading import Timer
 from typing import Union
 
 
@@ -10,6 +8,7 @@ class Record:
         self._key = key
         self._value = value
         self._ttl = ttl
+        self._calls = 0
 
     @property
     def key(self):
@@ -23,9 +22,17 @@ class Record:
     def ttl(self):
         return self._ttl
 
+    @property
+    def calls(self):
+        return self._calls
+
     @ttl.setter
     def ttl(self, value):
         self._ttl = value
+
+    @calls.setter
+    def calls(self, value):
+        self._calls = value
 
     def __eq__(self, other):
         return self.key == other
@@ -34,14 +41,17 @@ class Record:
 class LRUCache:
     def __init__(self, size: int = 2, default_ttl: int = 60):
         assert default_ttl > 0, "`default_ttl` should be positive."
+        assert size > 0, "`size` should be positive."
 
         self._default_ttl = default_ttl
-        self._storage = deque(maxlen=size)
+        self._max_size = size
+        self._storage = dict()
         self._ttl = dict()
+        self._min_call_value = 0
 
     @property
     def max_size(self):
-        return self._storage.maxlen
+        return self._max_size
 
     @property
     def default_ttl(self):
@@ -56,66 +66,44 @@ class LRUCache:
     def size(self):
         return len(self._storage)
 
-    def _pop_invalid(self, ttl_time):
-        invalid_list = self._ttl.get(ttl_time, [])
-        for key in invalid_list:
-            print(key)
-            try:
-                self._storage.remove(key)
-            except ValueError:
-                pass
-        try:
-            self._ttl.pop(ttl_time)
-        except KeyError:
-            pass
-
-    def index(self, key):
-        """If record exists returns index else returns -1 """
-        try:
-            return self._storage.index(key)
-        except ValueError:
-            return -1
+    def exist(self, key):
+        """If record exists returns value else returns None """
+        return self._storage.get(key, None) is None
 
     def get(self, key):
-        index = self.index(key)
-        if index != -1:
-            record = self._storage[index]
-            self._storage.remove(key)
-            self._storage.append(record)
-            return record.value
+        record = self._storage.get(key, None)
+        if record:
+            if record.ttl >= time.time():
+                self._ttl[key] += 1
+                return record.value
+            else:
+                self._ttl.pop(key)
+                self._storage.pop(key)
         return None
 
     def pop(self, key):
-        index = self.index(key)
-        if index != -1:
-            key_time = self._storage[index].ttl
-            ttl_list = self._ttl[key_time]
-            try:
-                ttl_list.pop(ttl_list.index(key))
-                if not ttl_list:
-                    self._ttl.pop(key_time)
-                    print(f'pop {key}')
-                    self._storage.remove(index)
-            except ValueError:
-                pass
+        record = self._storage.get(key, None)
+        if record:
+            self._ttl.pop(key)
+            print(f'pop {key}')
+            self._storage.pop(key)
 
     def clean(self):
         self._storage.clear()
 
     def push(self, key, value, ttl: int = None):
+        assert isinstance(ttl, type(None)) or ttl > 0, \
+            "`ttl` should be positive."
         if not ttl:
             ttl = self.default_ttl
         ttl_time = int(time.time() + ttl)
-        ttl_list = self._ttl.get(ttl_time, None)
-        if not ttl_list:
-            self._ttl[ttl_time] = [key, ]
-            Timer(ttl, self._pop_invalid, [ttl_time, ]).start()
-        else:
-            ttl_list.append(key)
+        self._ttl[key] = 0
         if self.size == self.max_size:
-            self.pop(self._storage[0].key)
+            not_popular = min(self._ttl, key=self._ttl.get)
+            self._ttl.pop(not_popular)
+            self.pop(not_popular)
 
-        self._storage.append(Record(key, value, int(time.time() + ttl)))
+        self._storage[key] = (Record(key, value, ttl_time))
 
 
 if __name__ == '__main__':
