@@ -4,15 +4,10 @@ from typing import Union
 
 
 class Record:
-    def __init__(self, key: str, value=None, ttl: Union[int, float] = 60):
-        self._key = key
+    def __init__(self, value=None, ttl: Union[int, float] = 60):
         self._value = value
         self._ttl = ttl
         self._calls = 0
-
-    @property
-    def key(self):
-        return self._key
 
     @property
     def value(self):
@@ -34,9 +29,6 @@ class Record:
     def calls(self, value):
         self._calls = value
 
-    def __eq__(self, other):
-        return self.key == other
-
 
 class LRUCache:
     def __init__(self, size: int = 2, default_ttl: int = 60):
@@ -47,7 +39,6 @@ class LRUCache:
         self._max_size = size
         self._storage = dict()
         self._ttl = dict()
-        self._min_call_value = 0
 
     @property
     def max_size(self):
@@ -64,11 +55,15 @@ class LRUCache:
 
     @property
     def size(self):
+        self._clean_expired()
         return len(self._storage)
 
     def exist(self, key):
-        """If record exists returns value else returns None """
-        return self._storage.get(key, None) is None
+        """If record exists returns True else False"""
+        record = self._storage.get(key, None)
+        if record:
+            return record.ttl >= time.time()
+        return False
 
     def get(self, key):
         record = self._storage.get(key, None)
@@ -85,7 +80,6 @@ class LRUCache:
         record = self._storage.get(key, None)
         if record:
             self._ttl.pop(key)
-            print(f'pop {key}')
             self._storage.pop(key)
 
     def clean(self):
@@ -97,18 +91,20 @@ class LRUCache:
         if not ttl:
             ttl = self.default_ttl
         ttl_time = int(time.time() + ttl)
-        self._ttl[key] = 0
         if self.size == self.max_size:
             not_popular = min(self._ttl, key=self._ttl.get)
-            self._ttl.pop(not_popular)
             self.pop(not_popular)
 
-        self._storage[key] = (Record(key, value, ttl_time))
+        self._ttl[key] = 0
+        self._storage[key] = Record(value, ttl_time)
+
+    def _clean_expired(self):
+        self._storage = {k: v for k, v in self._storage.items() if v.ttl >= time.time()}
 
 
 if __name__ == '__main__':
     cache = LRUCache(size=25, default_ttl=5)
-    for i in range(1, 5000000):
+    for i in range(1, 31):
         if not i % 5:
             cache.get(i - 5)
             if i == 5:
