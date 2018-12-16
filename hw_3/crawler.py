@@ -1,6 +1,5 @@
-import json
-from asyncio import sleep
-from concurrent.futures import ThreadPoolExecutor
+import csv
+from concurrent.futures import ThreadPoolExecutor, wait
 from pprint import pprint
 from queue import Queue, Empty
 from urllib.parse import urljoin
@@ -19,7 +18,7 @@ class Crawler:
     skip_classes = ('image', )
 
     def __init__(self, base_url: str,
-                 process_amount: int = 20,
+                 process_amount: int = 4,
                  timeout: int = 10, raise_for_status: bool = True):
         self.base_url = base_url
         self.timeout = timeout
@@ -32,7 +31,24 @@ class Crawler:
         self._unprocessed_pages = Queue()
 
         self._adjacency_list = dict()
-        self._pages = dict()
+        self._pages = []
+        self._staff_pages = []
+
+        retry = Retry(
+            total=3,
+            read=5,
+            connect=5,
+            backoff_factor=0.5,
+            respect_retry_after_header=True
+            # status_forcelist=status_forcelist,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        session = requests.Session()
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        self._session = session
+
+        self._works = []
 
     @property
     def processed_pages(self):
@@ -43,14 +59,13 @@ class Crawler:
         return self._unprocessed_pages
 
     def run_staff(self):
-        while True:
+        while self._unprocessed_pages.qsize() < 100:
             try:
                 url = self._unprocessed_staff_pages.get(timeout=2)
                 if url not in self._processed_staff_pages:
                     print(f'Staff {url}.')
                     self._processed_staff_pages.add(url)
-                    job = self._pool.submit(self.crawl, url, True)
-                    job.add_done_callback(self.strange_result_func)
+                    self._works.append(self._pool.submit(self.crawl, url, True))
             except Empty:
                 break
             except KeyboardInterrupt:
@@ -67,8 +82,7 @@ class Crawler:
                 if url not in self._processed_pages:
                     # print(f'Article {url}.')
                     self._processed_pages.add(url)
-                    job = self._pool.submit(self.crawl, url)
-                    job.add_done_callback(self.strange_result_func)
+                    self._works.append(self._pool.submit(self.crawl, url))
             except Empty:
                 break
             except KeyboardInterrupt:
@@ -76,29 +90,29 @@ class Crawler:
                 break
             except Exception as e:
                 print(f'Get Exception2: {e}')
-        print(f'Have processed {len(self._processed_pages)} articles.')
-        print(f'Pages amount: {len(self._pages)}')
-        print(f'Link arrays amount: {len(self._adjacency_list)}')
 
     def run(self):
         self.run_staff()
+        wait(self._works)
+        # with open('staff_page_content.csv', 'w') as csvfile:
+        #     writer = csv.DictWriter(csvfile, fieldnames=['url', 'content'])
+        #     writer.writeheader()
+        #     for data in self._staff_pages:
+        #         writer.writerow(data)
+        self._works = []
         self.run_articles()
-        # lock = Lock()
-        # self._pool.join()
-        # for page in self._adjacency_list:
-        #     adj_l = self._adjacency_list[page]
-        #     for link in adj_l:
-        #         if link not in self._adjacency_list.keys():
-        #             adj_l.remove(link)
-        #     self._adjacency_list[page] = adj_l
+        wait(self._works)
+        print(f'Have processed {len(self._processed_pages)} articles.')
+        print(f'Pages amount: {len(self._pages)}')
+        print(f'Link arrays amount: {len(self._adjacency_list)}')
         try:
-            # file to store state based URLs
-            record_file = open('records_file.txt', 'a+')
-            record_file.write(json.dumps(self._pages.items()))
-            record_file.close()
+            with open('page_content.txt', 'w') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=['url', 'content'])
+                writer.writeheader()
+                writer.writerows(row for row in self._pages if row)
         except Exception as e:
             print(
-                "Unable to store records in CSV file. Technical details below.\n")
+                "Unable to store records in CSV file.\n")
             print(str(e))
         finally:
             print("Total Records  = " + str(len(self.processed_pages)))
@@ -107,34 +121,22 @@ class Crawler:
         headers = {
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.143 Safari/537.36'}
         try:
-            # sleep(1)
-            retry = Retry(
-                total=3,
-                read=5,
-                connect=5,
-                backoff_factor=0.1,
-                respect_retry_after_header=True
-                # status_forcelist=status_forcelist,
-            )
-            adapter = HTTPAdapter(max_retries=retry)
-            session = requests.Session()
-            session.mount('http://', adapter)
-            session.mount('https://', adapter)
-            response = session.get(url, headers=headers, timeout=self.timeout)
+            response = self._session.get(url, headers=headers, timeout=self.timeout)
             if response.status_code == 200:
                 if is_staff:
-                    self.find_staff_links(response)
+                    self.find_staff_links(url, response)
                 else:
-                    self.find_links(url, response)
-                # map(self.unprocessed_pages.put, links)
-
+                    self.save_page(url, response)
             else:
                 print(f'Page {url} return status {response.status_code}.')
+                print(f'Text: {response.text}.')
         except requests.RequestException as e:
             print(f'Get request exception {e}')
 
-    def find_staff_links(self, page):
+    def find_staff_links(self, current_url, page):
         link_list = []
+        self._staff_pages.append({'url': current_url,
+                                  'content': page.text.encode("utf-8")})
         soup = BeautifulSoup(page.text, 'html.parser')
         # separate content from other staff
         main_content = soup.find("div", {"id": "content"})
@@ -163,52 +165,22 @@ class Crawler:
             if url not in self._processed_staff_pages:
                 self._unprocessed_staff_pages.put(url)
 
-    def find_links(self, current_url, page):
-        # if current_url == 'https://be.wikipedia.org/wiki/%D0%A4%D0%B0%D0%B9%D0%BB:Wiki_letter_w.svg':
-        #     print()
-        link_list = []
+    def save_page(self, current_url, page):
         soup = BeautifulSoup(page.text, 'html.parser')
         article = soup.find('li', {'id': 'ca-nstab-main'}).find('a').text == 'Артыкул'
 
         if not article:
-            print(f'Can\'t find main_content in page.')
-            counter = 0
-            for some_page in self._adjacency_list:
-                if current_url in self._adjacency_list[some_page]:
-                    links = self._adjacency_list[some_page]
-                    links.pop(current_url)
-                    self._adjacency_list[some_page] = links
-                    counter += 1
-            print(f'Remove incorrect links from {counter} pages')
-            return link_list
+            print(f'Can\'t find `Артыкул` in page.')
+            return
         main_content = soup.find("div", {"id": "content"})
         no_article = main_content.find('div', {'class': 'noarticletext mw-content-ltr'})
         if no_article:
             print(f'There isn\'t an article at {current_url}')
-            self._pages[current_url] = 'No article'
+            self._pages.append({'url': current_url, 'content': 'No article'})
+            # self._pages[current_url] = 'No article'
             return
-        self._pages[current_url] = page.text
-        adj_list = set()
-        # links = main_content.find_all('a', {'class': 'mw-redirect'}, href=True)
-        footer_links = main_content.find_all('div', {'id': 'catlinks'})
-        for link in footer_links:
-            link.extract()
-        links = main_content.find_all('a', href=True)
-        # links = set(link['href'] for link in links) - \
-        #         set(link['href'] for link in footer_links)
-        for link in links:
-            url = link['href']
-            if url.startswith('/wiki') or url.startswith(self.base_url):
-                # if 'class' in link and \
-                #         all(cl not in self.skip_classes for cl in link['class']):
-                url = urljoin(self.base_url, url)
-                adj_list.add(url)
-        self._adjacency_list[current_url] = adj_list
-
-        # print(f'{len(adj_list)} links arrives at {current_url}.')
-
-    def strange_result_func(self, result):
-        pass
+        self._pages.append({'url': current_url,
+                            'content': page.text.encode("utf-8")})
 
 
 if __name__ == '__main__':
