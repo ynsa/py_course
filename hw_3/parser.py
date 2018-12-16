@@ -20,6 +20,7 @@ class WikiParser:
         self.processed_pages = []
         self.unprocessed_pages = Queue()
         self.adjacency_list = []
+        self.pages = dict()
 
         self.pool = ThreadPoolExecutor(max_workers=process_amount)
         self.works = []
@@ -31,27 +32,20 @@ class WikiParser:
         #             adj_l.remove(link)
         #     self._adjacency_list[page] = adj_l
 
-    def run(self, filename):
-        csv.field_size_limit(922337203)
-        with open(filename, 'r') as csvfile:
-            csv_reader = csv.reader(csvfile, delimiter=',')
-            for row in csv_reader:
-                self.unprocessed_pages.put(row)
+    def run(self):
         print(f'Len of unprocessed_pages: {self.unprocessed_pages.qsize()}.')
         self.run_articles()
 
     def run_articles(self):
         while True:
             try:
-                page = self.unprocessed_pages.get(timeout=2)
-                if len(page) != 2 or self.base_url not in page[0]:
-                    continue
-                url = page[0]
+                url = self.unprocessed_pages.get(timeout=2)
+
                 if url not in self.processed_pages:
                     # print(f'Article {url}.')
                     self.processed_pages.append(url)
                     self.works.append(self.pool.submit(
-                        self.find_links, url, page[1]))
+                        self.find_links, url))
             except Empty:
                 break
             except KeyboardInterrupt:
@@ -62,8 +56,9 @@ class WikiParser:
         print(f'Have processed {len(self.processed_pages)} articles.')
         print(f'Link arrays amount: {len(self.adjacency_list)}')
 
-    def find_links(self, current_url, page):
+    def find_links(self, current_url):
         link_list = []
+        page = self.pages[current_url]
         soup = BeautifulSoup(page, 'html.parser')
         article = soup.find('li', {'id': 'ca-nstab-main'}).find('a').text == 'Артыкул'.encode("utf-8")
 
@@ -79,28 +74,22 @@ class WikiParser:
             print(f'Remove incorrect links from {counter} pages')
             return link_list
         main_content = soup.find("div", {"id": "content"})
-        # no_article = main_content.find('div', {'class': 'noarticletext mw-content-ltr'})
-        # if no_article:
-        #     print(f'There isn\'t an article at {current_url}')
-        #     # self._pages[current_url] = 'No article'
-        #     return
-        # self._pages[current_url] = page.text
         adj_list = set()
-        # links = main_content.find_all('a', {'class': 'mw-redirect'}, href=True)
         footer_links = main_content.find_all('div', {'id': 'catlinks'})
         for link in footer_links:
             link.extract()
         links = main_content.find_all('a', href=True)
-        # links = set(link['href'] for link in links) - \
-        #         set(link['href'] for link in footer_links)
         for link in links:
             url = link['href']
-            if url.startswith('/wiki') or url.startswith(self.base_url):
+            url = urljoin(self.base_url, url)
+            if self.pages.get(url, None):
+                adj_list.add(url)
+            # if url.startswith('/wiki') or url.startswith(self.base_url):
                 # if 'class' in link and \
                 #         all(cl not in self.skip_classes for cl in link['class']):
-                url = urljoin(self.base_url, url)
-                adj_list.add(url)
+                # url = urljoin(self.base_url, url)
         self.adjacency_list[current_url] = adj_list
+        print(f'{len(adj_list)} links at {current_url}')
 
 
 if __name__ == '__main__':
@@ -110,6 +99,7 @@ if __name__ == '__main__':
     crawler.run()
     parser = WikiParser(base_url='https://be.wikipedia.org/wiki/')
     parser.unprocessed_pages = crawler.unprocessed_pages
-    parser.run(filename='page_content.txt')
+    parser.pages = crawler._pages
+    parser.run()
     # pprint(crawler.processed_pages)
     pprint(parser.adjacency_list)
